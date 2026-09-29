@@ -26,7 +26,7 @@ const english={
   '.process-list li:nth-child(3) h3':'Begin the work','.process-list li:nth-child(3) p':'Organized execution with clear updates when needed.',
   '.process-list li:nth-child(4) h3':'Receive the result','.process-list li:nth-child(4) p':'Final review and delivery in a ready-to-use format.',
   '#contact .section-kicker':'<span>05</span> Get started','#contact-title':'Have an idea or challenge?<br><em>Let’s turn it into a plan.</em>','#contact .brief-copy>p':'Contact me directly by WhatsApp or email. Secure online payment will be available soon.',
-  '.contact-panel>a:nth-child(1)':'Contact via WhatsApp <span>↗</span>','#email-link':'Contact by email <span>↗</span>','.payment-button':'Pay now <span>Coming soon</span>','.contact-hint':'Online payment is being prepared and will be activated soon.','.brief-link':'Or prepare your request first ↓',
+  '.contact-panel>a:nth-child(1)':'Contact via WhatsApp <span>↗</span>','#email-link':'Contact by email <span>↗</span>','.payment-button':'Pay now <span>Secure</span>','.contact-hint':'Secure card payment is processed through Togo.','.brief-link':'Or prepare your request first ↓',
   '#brief .section-kicker':'<span>06</span> Project brief','#brief-title':'Organize your idea<br>in one minute.','#brief-form .button':'Create request summary <span>↗</span>','#brief-form .form-note':'Your details remain in your browser and are not uploaded.',
   '#service option:nth-child(1)':'Select a service','#service option:nth-child(2)':'Electrical consulting','#service option:nth-child(3)':'Remote teaching','#service option:nth-child(4)':'Remote training','#service option:nth-child(5)':'Freelance service','#service option:nth-child(6)':'Not sure yet',
   '#stage option:nth-child(1)':'Exploring the idea','#stage option:nth-child(2)':'Ready to begin','#stage option:nth-child(3)':'Existing work needs support','#stage option:nth-child(4)':'Urgent task',
@@ -74,7 +74,7 @@ function applyLanguage(lang){
   localStorage.setItem('hamada-language',currentLang);
 }
 document.querySelectorAll('.language-switch button').forEach(button=>button.addEventListener('click',()=>applyLanguage(button.dataset.lang)));
-applyLanguage(localStorage.getItem('hamada-language')||'ar');
+applyLanguage(localStorage.getItem('hamada-language')||'en');
 
 const form=document.querySelector('#brief-form');
 const dialog=document.querySelector('#brief-dialog');
@@ -98,3 +98,73 @@ document.querySelector('.dialog-close').addEventListener('click',()=>dialog.clos
 dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});
 const status=document.querySelector('#copy-status');
 document.querySelector('#copy-brief').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(briefText);status.textContent=currentLang==='en'?'Request summary copied.':'تم نسخ ملخص الطلب.'}catch{status.textContent=currentLang==='en'?'Select the text above and copy it manually.':'حدّد النص أعلاه وانسخه يدويًا.'}});
+
+// Secure Togo payment flow
+const paymentDialog=document.querySelector('#payment-dialog');
+const openPayment=document.querySelector('#open-payment');
+const paymentClose=document.querySelector('.payment-close');
+const paymentForm=document.querySelector('#payment-form');
+const paymentService=document.querySelector('#payment-service');
+const customAmountWrap=document.querySelector('#custom-amount-wrap');
+const paymentAmount=document.querySelector('#payment-amount');
+const paymentStatus=document.querySelector('#payment-status');
+const paymentSubmit=document.querySelector('#payment-submit');
+
+if(openPayment&&paymentDialog){
+  openPayment.addEventListener('click',()=>paymentDialog.showModal());
+}
+if(paymentClose&&paymentDialog){
+  paymentClose.addEventListener('click',()=>paymentDialog.close());
+  paymentDialog.addEventListener('click',event=>{if(event.target===paymentDialog)paymentDialog.close()});
+}
+if(paymentService){
+  paymentService.addEventListener('change',()=>{
+    const option=paymentService.selectedOptions[0];
+    const isCustom=option?.value==='custom';
+    customAmountWrap.hidden=!isCustom;
+    paymentAmount.required=isCustom;
+    if(!isCustom) paymentAmount.value='';
+  });
+}
+if(paymentForm){
+  paymentForm.addEventListener('submit',async event=>{
+    event.preventDefault();
+    const option=paymentService.selectedOptions[0];
+    const preset=Number(option?.dataset.amount||0);
+    const amount=option?.value==='custom'?Number(paymentAmount.value):preset;
+    const [countryCode,countryName]=document.querySelector('#payment-country').value.split('|');
+
+    if(!Number.isFinite(amount)||amount<=0){
+      paymentStatus.textContent='Enter a valid payment amount.';
+      return;
+    }
+
+    paymentSubmit.disabled=true;
+    paymentStatus.textContent='Creating your secure payment…';
+
+    try{
+      const response=await fetch('/api/create-payment',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          service:option?.textContent?.trim()||'',
+          name:document.querySelector('#payment-name').value.trim(),
+          email:document.querySelector('#payment-email').value.trim(),
+          phone:document.querySelector('#payment-phone').value.trim(),
+          city:document.querySelector('#payment-city').value.trim(),
+          countryCode,
+          countryName,
+          phoneConnectedToWhats:document.querySelector('#payment-whatsapp').checked,
+          amount,
+          currency:document.querySelector('#payment-currency').value
+        })
+      });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||!data.paymentUrl) throw new Error(data.error||'Payment could not be created.');
+      window.location.assign(data.paymentUrl);
+    }catch(error){
+      paymentStatus.textContent=error.message||'Payment could not be created. Please try again.';
+      paymentSubmit.disabled=false;
+    }
+  });
+}
